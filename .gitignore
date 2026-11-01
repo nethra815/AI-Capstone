@@ -4,3 +4,4 @@ __pycache__/
 .venv/data/feedback.jsonl
 node_modules/
 web/dist/
+*.tsbuildinfo

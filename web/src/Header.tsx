@@ -10,9 +10,9 @@ export function Header({ route }: { route: Route }) {
   return (
     <header className="border-b border-rule bg-paper">
       <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-x-6 gap-y-1 px-4 pt-4 sm:px-6">
-        <a href="#/ask" className="pb-3 no-underline">
+        <a href="#/ask" className="pb-2 no-underline sm:pb-3">
           <span className="font-serif text-[19px] font-semibold tracking-[-0.01em] text-ink">SPIT Campus Assistant</span>
-          <span className="ml-3 hidden text-small text-ink-3 sm:inline">Research prototype · synthetic data</span>
+          <span className="block text-label text-ink-3 sm:ml-3 sm:inline sm:text-small">Research prototype · synthetic data</span>
         </a>
         <nav aria-label="Main" className="-mb-px flex gap-5">
           {TABS.map((t) => {
@@ -31,7 +31,6 @@ export function Header({ route }: { route: Route }) {
             );
           })}
         </nav>
-        <p className="w-full pb-2 text-label text-ink-3 sm:hidden">Research prototype · synthetic data</p>
       </div>
     </header>
   );

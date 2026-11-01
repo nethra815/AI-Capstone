@@ -1,4 +1,5 @@
 import { Header } from "./Header";
+import { AskView } from "./ask/AskView";
 import { StatusLine } from "./lib/Status";
 import { useHealth, useRoute } from "./lib/hooks";
 
@@ -12,12 +13,18 @@ export default function App() {
       </a>
       <Header route={route} />
       <main id="main" className="flex-1">
-        <div className="mx-auto max-w-[720px] px-4 pt-10 sm:px-6">
-          <h1 className="font-serif text-title font-semibold capitalize">{route}</h1>
-          <div className="mt-4">
-            <StatusLine health={health} />
-          </div>
+        {/* Ask stays mounted so the session's conversation survives switching tabs. */}
+        <div hidden={route !== "ask"}>
+          <AskView health={health} />
         </div>
+        {route !== "ask" && (
+          <div className="mx-auto max-w-[720px] px-4 pt-10 sm:px-6">
+            <h1 className="font-serif text-title font-semibold capitalize">{route}</h1>
+            <div className="mt-4">
+              <StatusLine health={health} />
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
