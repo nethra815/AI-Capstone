@@ -1,0 +1,6 @@
+pymupdf
+rank-bm25
+numpy
+sentence-transformers
+openai
+python-dotenv

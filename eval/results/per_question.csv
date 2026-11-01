@@ -1,0 +1,14 @@
+mode,id,category,abstained,should_abstain,correct,stale_error,over_refusal,stale_any,coverage,n_verified,latency_ms,recall@5,recall@10,cit_verified,cit_gold,answer,reason
+evidence_aware,Q02,amended,False,False,False,True,False,True,0.739,1,1949.9,True,True,"[1, 1]",True,The attendance condonation fee is ₹500 per course.,
+evidence_aware,Q04,amended,True,False,False,False,True,False,0.539,0,1049.9,True,True,"[0, 0]",,,low evidence coverage (0.539)
+evidence_aware,Q06,amended,True,False,False,False,True,False,0.547,0,855.8,True,True,"[0, 0]",,,low evidence coverage (0.547)
+evidence_aware,Q08,batch,True,False,False,False,True,False,0.349,0,1104.3,False,False,"[0, 0]",,,low evidence coverage (0.349)
+evidence_aware,Q10,batch,True,False,False,False,True,False,0.435,0,1176.0,True,True,"[0, 0]",,,low evidence coverage (0.435)
+evidence_aware,Q12,simple,True,False,False,False,True,False,0.74,0,1784.9,False,False,"[0, 0]",,,no claim passed citation verification
+evidence_aware,Q14,simple,False,False,True,False,False,False,1.0,1,1604.8,True,True,"[1, 1]",True,SGPA is calculated by dividing the sum of (credits × grade points) for all registered courses by the total number of credits of those courses.,
+evidence_aware,Q16,simple,True,False,False,False,True,False,0.62,0,1486.6,False,False,"[0, 0]",,,no claim passed citation verification
+evidence_aware,Q18,batch,False,False,True,False,False,False,0.619,1,2086.1,True,True,"[1, 1]",True,A B.Tech degree requires earning 160 credits (including non-credit).,
+evidence_aware,Q20,no_answer,True,True,True,,,,0.747,0,2256.3,,,"[0, 0]",,,no claim passed citation verification
+evidence_aware,Q22,no_answer,True,True,True,,,,0.612,0,10499.2,,,"[0, 0]",,,generator found the evidence insufficient
+evidence_aware,Q24,hinglish,False,False,False,True,False,True,0.995,1,7170.5,True,True,"[1, 1]",True,The fee for condonation is ₹500 per course.,
+evidence_aware,Q26,typo,False,False,False,False,False,False,0.708,1,16061.9,False,False,"[1, 1]",False,A student must meet a minimum of 75 % attendance for theory components and 80 % for practical components to be eligible for examination.,
