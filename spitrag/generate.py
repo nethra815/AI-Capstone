@@ -53,12 +53,38 @@ def changes_block(changes, as_of) -> str:
     return f"CHANGES IN FORCE on {as_of} (verified from circulars):\n" + "\n".join(lines) + "\n\n"
 
 
+# Page furniture repeated on every page of the PDFs. It carries no rule, so it is not sent to the model.
+BOILERPLATE = re.compile(r"SYNTHETIC\b.*\bRESEARCH|^\S+\s+\|\s+.*\|\s+(?:Page|Version)\b|^Page\s+\d+(?:\s+of\s+\d+)?$",
+                         re.I)
+
+
+def evidence_text(chunk: dict) -> str:
+    """The chunk's text without page headers, footers and its own document-id line."""
+    lines = [l for l in chunk["text"].splitlines()
+             if l.strip() and l.strip() != chunk["doc_id"] and not BOILERPLATE.search(l.strip())]
+    return "\n".join(lines)
+
+
+def evidence_block(context) -> str:
+    """One block per distinct passage: a passage whose text was already sent is not sent again."""
+    seen, blocks = set(), []
+    for c in context:
+        text = evidence_text(c)
+        key = re.sub(r"\s+", " ", text).strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        blocks.append(f"[{c['id']}] {c['title']} v{c['version']} - {c['heading']}\n{text}")
+    return "\n\n".join(blocks)
+
+
 class LLMGenerator:
     def generate(self, question, query_terms, context, as_of=None, batch=None, changes=None):
-        ev = "\n\n".join(f"[{c['id']}] {c['title']} v{c['version']} - {c['heading']}\n{c['text']}" for c in context)
+        # gpt-oss is a reasoning model: its hidden reasoning counts against max_tokens, so leave room for it.
         data = chat_json(SYSTEM, f"Policies apply as of: {as_of}. Student batch: {batch or 'unknown'}.\n\n"
-                                 f"{changes_block(changes, as_of)}EVIDENCE:\n{ev}\n\nQUESTION: {question}",
-                         required_key="claims", temperature=0)
+                                 f"{changes_block(changes, as_of)}EVIDENCE:\n{evidence_block(context)}\n\n"
+                                 f"QUESTION: {question}",
+                         required_key="claims", max_tokens=2000, temperature=0, reasoning_effort="low")
         valid = {c["id"] for c in context}
         claims = [{"text": c["text"], "evidence": [e for e in c.get("evidence", []) if e in valid]}
                   for c in data.get("claims", []) if c.get("text")]

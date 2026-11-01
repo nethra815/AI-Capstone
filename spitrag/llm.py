@@ -66,7 +66,8 @@ def chat_json(system: str, user: str, max_tokens: int = 900, required_key: str |
     """Send one chat request and return the JSON object in the reply. Raises if none is returned.
 
     temperature=0 and a fixed seed make repeated runs as stable as the provider allows. reasoning_effort ("low",
-    "medium", "high") applies to reasoning models such as gpt-oss.
+    "medium", "high") applies to reasoning models such as gpt-oss. A reply cut off at max_tokens is retried once with
+    double the budget, because a truncated JSON object can't be used.
     """
     if not GROQ_API_KEY:
         raise SystemExit("GROQ_API_KEY is not set. Export your Groq key before running (see README).")
@@ -77,5 +78,16 @@ def chat_json(system: str, user: str, max_tokens: int = 900, required_key: str |
         kwargs["seed"] = seed
     if reasoning_effort:
         kwargs["reasoning_effort"] = reasoning_effort
-    r = _create(max_wait, max_tokens=max_tokens, **kwargs)
-    return _parse(r.choices[0].message.content or "", required_key)
+    budget = max_tokens
+    for attempt in range(2):
+        r = _create(max_wait, max_tokens=budget, **kwargs)
+        raw = r.choices[0].message.content or ""
+        truncated = r.choices[0].finish_reason == "length"
+        try:
+            return _parse(raw, required_key)
+        except RuntimeError:
+            if not truncated or attempt == 1:
+                raise
+            budget *= 2
+            print(f"[llm] reply cut off at {budget // 2} tokens; retrying with {budget}", file=sys.stderr)
+    raise RuntimeError("unreachable")
