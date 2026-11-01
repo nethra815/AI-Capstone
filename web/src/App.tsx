@@ -1,5 +1,6 @@
 import { Header } from "./Header";
 import { AskView } from "./ask/AskView";
+import { DocumentsView } from "./documents/DocumentsView";
 import { StatusLine } from "./lib/Status";
 import { useHealth, useRoute } from "./lib/hooks";
 
@@ -17,9 +18,10 @@ export default function App() {
         <div hidden={route !== "ask"}>
           <AskView health={health} />
         </div>
-        {route !== "ask" && (
+        {route === "documents" && <DocumentsView health={health} />}
+        {route === "research" && (
           <div className="mx-auto max-w-[720px] px-4 pt-10 sm:px-6">
-            <h1 className="font-serif text-title font-semibold capitalize">{route}</h1>
+            <h1 className="font-serif text-title font-semibold">Research</h1>
             <div className="mt-4">
               <StatusLine health={health} />
             </div>
