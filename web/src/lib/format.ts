@@ -19,16 +19,6 @@ export const pct = (x: number | null | undefined, digits = 0) =>
 
 export const seconds = (ms: number | null | undefined) => (ms == null ? "—" : `${(ms / 1000).toFixed(1)} s`);
 
-/**
- * Clause labels parsed from the PDFs sometimes include values that are not clauses (e.g. "65.00" or a CGPA "6.00").
- * Keep the labels that belong to the cited section ("4" and "4.5" for "4. Attendance Regulations").
- */
-export function clauseLabels(clauses: string[], section?: string): string[] {
-  const num = section?.match(/^(\d+)\./)?.[1];
-  if (!num) return clauses;
-  const real = clauses.filter((c) => c === num || c.startsWith(`${num}.`));
-  return real.length ? real : clauses;
-}
 
 export const MODE_LABELS: Record<string, string> = {
   vector: "Vector",

@@ -7,7 +7,6 @@ import { Feedback } from "./Feedback";
 
 interface Props {
   result: AskResult;
-  fixture?: boolean;
   activeClaim: number | null;
   onCite: (claimIndex: number, trigger: HTMLElement) => void;
 }
@@ -30,16 +29,11 @@ function OutcomeLabel({ result }: { result: AskResult }) {
   );
 }
 
-export function AnswerNote({ result, fixture, activeClaim, onCite }: Props) {
+export function AnswerNote({ result, activeClaim, onCite }: Props) {
   const searched = searchedFor(result);
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <OutcomeLabel result={result} />
-        {fixture && (
-          <span className="rounded-sm border border-rule-strong px-1.5 text-label text-ink-3">Dev fixture</span>
-        )}
-      </div>
+      <OutcomeLabel result={result} />
 
       {searched && (
         <p className="text-small text-ink-3">

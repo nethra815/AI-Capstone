@@ -43,7 +43,6 @@ export function TurnView({ turn, activeClaim, onCite, onRetry }: Props) {
       {turn.status === "done" && turn.result && (
         <AnswerNote
           result={turn.result}
-          fixture={turn.fixture}
           activeClaim={activeClaim}
           onCite={onCite}
         />

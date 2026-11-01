@@ -40,6 +40,7 @@ export interface AskResult {
   batch: string | null;
   language: string; // "en" | "hinglish" | ...
   search_text: string;
+  english_query?: string | null; // English rewrite of a Hinglish/Hindi question
   spell_fixes: [string, string][]; // [typed word, corrected word]
   notices: string[];
   conflicts: Conflict[];
@@ -109,12 +110,14 @@ export interface ModeMetrics {
   citation_verified: number | null;
   recall_at_5: number | null;
   avg_latency_ms: number;
+  avg_tokens?: number | null; // LLM tokens per question (newer result files only)
 }
 
 export interface EvalSummary {
   available: boolean;
   n_questions?: number;
   updated?: string;
+  source?: string;
   modes: ModeMetrics[];
   categories: { category: string; n: number; accuracy: Record<string, number | null> }[];
 }

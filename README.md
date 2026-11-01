@@ -38,13 +38,16 @@ keeps the question box disabled until `/api/health` reports the pipeline is read
 
 API endpoints: `GET /api/health`, `POST /api/ask` (`{question, as_of?, batch?, mode?}`), `GET /api/documents`,
 `GET /api/documents/{doc_id}/pdf`, `GET /api/chunks/{chunk_id}`, `POST /api/feedback` (appends to
-`data/feedback.jsonl`, no personal data), `GET /api/eval` (summary of `eval/results/per_question.csv`).
+`data/feedback.jsonl`, no personal data), `GET /api/eval` (summary of `eval/results/regression_all_modes.csv`, falling back to `per_question.csv`).
 
 Notes:
 - The free Groq tier allows roughly 4 questions a minute. The API waits and retries once on a short rate limit,
   otherwise the page shows "try again in N seconds" with a retry button.
-- In `npm run dev`, typing `dev:conflict` shows a fixture of the "Policy changed" view (the live pipeline only
-  returns conflicts when circular amendments were extracted at startup). The fixture is not in production builds.
+- Try "What is the attendance condonation fee per course?" to see the "Policy changed" view: the revised academic
+  circular raised the fee from ₹500 to ₹750.
+- Regenerate the Research view's data with
+  `python eval/run_eval.py --benchmark eval/regression.jsonl --pace 14 --out eval/results/regression_all_modes.csv`
+  (about 20 minutes; paced for Groq's free-tier rate limit).
 - `npm run build` writes a static build to `web/dist/`.
 
 ## Hinglish and Hindi

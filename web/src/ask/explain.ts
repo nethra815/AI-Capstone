@@ -47,8 +47,10 @@ export function suggestedOffice(r: AskResult): string | null {
 
 export const LANGUAGES: Record<string, string> = { en: "English", hinglish: "Hinglish", hi: "Hindi" };
 
-/** The question with the pipeline's spelling corrections applied, or null if nothing was corrected. */
+/** What was actually searched: the English rewrite of a Hinglish/Hindi question, or the question with spelling
+ * corrections applied. Null when the question was searched as typed. */
 export function searchedFor(r: AskResult): string | null {
+  if (r.english_query && r.language !== "en") return r.english_query;
   if (!r.spell_fixes?.length) return null;
   let q = r.question;
   for (const [from, to] of r.spell_fixes) {

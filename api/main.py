@@ -25,7 +25,8 @@ from spitrag.config import DOCS_DIR, ROOT
 from spitrag.pipeline import MODES, get_pipeline
 
 FEEDBACK_FILE = ROOT / "data" / "feedback.jsonl"
-EVAL_FILE = ROOT / "eval" / "results" / "per_question.csv"
+# The Research view prefers the all-modes regression run; the original benchmark results are the fallback.
+EVAL_FILES = [ROOT / "eval" / "results" / "regression_all_modes.csv", ROOT / "eval" / "results" / "per_question.csv"]
 
 
 class _State:
@@ -192,34 +193,10 @@ TOPICS = [  # (topic, keywords matched against doc id + file name, lower-cased)
     ("Student life", ("-clb-", "club")),
     ("Conduct and grievances", ("-coc-", "-grv-", "conduct", "grievance")),
 ]
-GENERIC_TITLES = {"sardar patel institute of technology (spit)"}
-
 
 def _topic(d):
     key = f"{d['doc_id']} {d['file']}".lower()
     return next((t for t, kws in TOPICS if any(k in key for k in kws)), "Other")
-
-
-def _display_title(d):
-    """The PDFs put different things in the first line; pick a human-readable name."""
-    title = (d.get("title") or "").strip()
-    if "|" in title:
-        parts = [p.strip() for p in title.split("|")]
-        named = [p for p in parts[1:] if len(p.split()) >= 2 and p[:1].isalpha() and not re.match(r"(version|page)\b", p, re.I)
-                 and re.search(r"[a-z]{3}", p)]
-        if named:
-            return named[0]
-    elif title and title.lower() not in GENERIC_TITLES:
-        return title
-    name = Path(d["file"]).stem
-    name = re.sub(r"^\d+_", "", name)
-    name = re.sub(r"^[A-Z]+(?:-[A-Z0-9]+)+-\d{3}\s+", "", name)  # leading document id
-    name = re.sub(r"[_ ]old$", "", name).replace("_", " ").strip()
-    return name.title() if name.islower() else name
-
-
-def _is_circular(d, display):
-    return d["doc_type"] == "circular" or "circular" in display.lower() or "amendment" in (d.get("title") or "").lower()
 
 
 def _status(d, circular, today):
@@ -251,8 +228,8 @@ def _documents():
     today = date.today()
     rows = []
     for d in p.docs.values():
-        display = _display_title(d)
-        circular = _is_circular(d, display)
+        display = d["title"] or Path(d["file"]).stem  # titles are read from each PDF's metadata block
+        circular = d["doc_type"] == "circular"
         amends = set(targets.get(d["doc_id"], set()))
         if circular:  # a circular names the documents it amends in its own text
             text = text_by_file.get(d["file"], "")
@@ -336,9 +313,10 @@ def _mean(xs):
 
 @app.get("/api/eval")
 def eval_summary():
-    if not EVAL_FILE.is_file():
+    eval_file = next((f for f in EVAL_FILES if f.is_file()), None)
+    if eval_file is None:
         return {"available": False, "modes": [], "categories": []}
-    with EVAL_FILE.open(encoding="utf-8") as f:
+    with eval_file.open(encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     by_mode = defaultdict(list)
     for r in rows:
@@ -360,6 +338,7 @@ def eval_summary():
             "citation_verified": round(sum(c[0] for c in cv) / claims, 4) if claims else None,
             "recall_at_5": _mean([_b(r["recall@5"]) for r in rs]),
             "avg_latency_ms": round(_mean([float(r["latency_ms"]) for r in rs if r["latency_ms"]]) or 0, 1),
+            "avg_tokens": _mean([float(r["tokens"]) for r in rs if r.get("tokens")]),  # only in newer result files
         })
     cats = defaultdict(lambda: defaultdict(list))
     for r in rows:
@@ -368,4 +347,5 @@ def eval_summary():
                    "accuracy": {mode: _mean(v) for mode, v in m.items()}} for c, m in cats.items()]
     return {"available": True, "n_questions": len({r["id"] for r in rows}), "modes": modes,
             "categories": categories,
-            "updated": datetime.fromtimestamp(EVAL_FILE.stat().st_mtime, timezone.utc).date().isoformat()}
+            "source": eval_file.name,
+            "updated": datetime.fromtimestamp(eval_file.stat().st_mtime, timezone.utc).date().isoformat()}

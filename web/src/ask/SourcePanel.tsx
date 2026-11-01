@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Check, CircleAlert, ExternalLink, X } from "lucide-react";
 import { api, pdfUrl, type Citation, type Claim, type DocumentInfo } from "../api";
-import { clauseLabels, formatDate } from "../lib/format";
+import { formatDate } from "../lib/format";
 import { useLoad } from "../lib/hooks";
 import { Highlight, keyTerms } from "./highlight";
 
@@ -28,7 +28,7 @@ function CitationBlock({ citation, terms, doc }: { citation: Citation; terms: st
     ["Document ID", <span className="font-mono text-mono">{citation.doc_id}</span>],
     ["Version", citation.version === "?" ? "Not stated" : citation.version],
     ["Section", citation.section],
-    ["Clauses", <span className="font-mono text-mono">{clauseLabels(citation.clauses, citation.section).join(", ") || "—"}</span>],
+    ["Clauses", <span className="font-mono text-mono">{citation.clauses.join(", ") || "—"}</span>],
     [citation.pages.length > 1 ? "Pages" : "Page", citation.pages.join(", ") || "—"],
     ["Published", formatDate(citation.published_on)],
     ["Effective from", formatDate(citation.effective_from)],

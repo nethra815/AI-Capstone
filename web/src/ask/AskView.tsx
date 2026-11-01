@@ -16,7 +16,6 @@ export interface Turn {
   status: "pending" | "done" | "error";
   result?: AskResult;
   error?: ApiError;
-  fixture?: boolean;
 }
 
 /** Which footnote is open in the source panel. */
@@ -39,10 +38,6 @@ export function AskView({ health }: { health: HealthState }) {
 
   const run = useCallback(async (turn: Turn) => {
     const update = (patch: Partial<Turn>) => setTurns((ts) => ts.map((t) => (t.id === turn.id ? { ...t, ...patch } : t)));
-    if (import.meta.env.DEV && turn.question.trim() === "dev:conflict") {
-      const { conflictFixture } = await import("./devFixtures");
-      return update({ status: "done", result: conflictFixture(turn.as_of), fixture: true });
-    }
     try {
       const result = await api.ask({ question: turn.question, as_of: turn.as_of, batch: turn.batch });
       update({ status: "done", result });

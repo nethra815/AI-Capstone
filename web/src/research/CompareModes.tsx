@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import { api, ApiError, MODES, type AskResult, type Mode } from "../api";
-import { clauseLabels, MODE_LABELS, seconds, todayIso } from "../lib/format";
+import { MODE_LABELS, seconds, todayIso } from "../lib/format";
 import { useElapsed, type HealthState } from "../lib/hooks";
 import { healthMessage } from "../lib/Status";
 import { friendlyAbstainReason } from "../ask/explain";
@@ -45,7 +45,7 @@ function Column({ mode, side, startedAt }: { mode: Mode; side: Side; startedAt: 
                     {ci && (
                       <p className="mt-0.5 text-label text-ink-3">
                         <span className="font-mono">{ci.doc_id}</span> · {ci.section}
-                        {ci.clauses.length > 0 && <> · cl. <span className="font-mono">{clauseLabels(ci.clauses, ci.section).join(", ")}</span></>}
+                        {ci.clauses.length > 0 && <> · cl. <span className="font-mono">{ci.clauses.join(", ")}</span></>}
                       </p>
                     )}
                   </li>

@@ -21,6 +21,7 @@ const METRICS: Metric[] = [
   { key: "abstention_rate", label: "Abstention rate", help: "All questions it declined", format: (m) => pct(m.abstention_rate, 1) },
   { key: "stale_errors", label: "Stale-rule errors", help: "Answers that gave an outdated value", format: (m) => String(m.stale_errors) },
   { key: "recall_at_5", label: "Retrieval recall@5", help: "Gold passage among the top five retrieved", format: (m) => pct(m.recall_at_5, 1), value: (m) => m.recall_at_5, higherIsBetter: true },
+  { key: "avg_tokens", label: "LLM tokens per question", help: "Prompt + completion, including query rewriting", format: (m) => (m.avg_tokens == null ? "—" : Math.round(m.avg_tokens).toLocaleString()) },
   { key: "avg_latency_ms", label: "Average latency", help: "Per question, after startup", format: (m) => seconds(m.avg_latency_ms) },
   { key: "n", label: "Questions", help: "Rows evaluated in this mode", format: (m) => String(m.n) },
 ];
@@ -110,7 +111,7 @@ export function ResearchView({ health }: { health: HealthState }) {
           <h2 id="bench" className="font-serif text-subhead font-semibold">Benchmark results</h2>
           {data?.available && (
             <p className="text-small text-ink-3">
-              {data.n_questions} questions · results file updated {formatDate(data.updated)}
+              {data.n_questions} questions · {data.source ?? "results file"} · updated {formatDate(data.updated)}
             </p>
           )}
         </div>

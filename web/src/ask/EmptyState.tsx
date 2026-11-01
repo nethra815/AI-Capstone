@@ -1,11 +1,11 @@
 // Each example was asked against the live pipeline (1 Nov 2026) and returned a verified answer.
 export const EXAMPLES = [
-  "What is the minimum attendance required in each course?",
+  "What is the attendance condonation fee per course?",
+  "hostel mein guest raat ko ruk sakta hai kya?",
   "How many books can a student borrow from the library?",
   "What is the minimum CGPA for placement registration?",
   "What is the maximum late payment penalty per instalment?",
   "How many days do I have to appeal a disciplinary decision?",
-  "hostel ka in-time kya hai?",
 ];
 
 export function EmptyState({ onPick, disabled }: { onPick: (q: string) => void; disabled: boolean }) {
