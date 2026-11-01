@@ -40,8 +40,12 @@ Rules: (1) every factual claim must cite the passage ids that support it; (2) ne
 not in the passages; (3) evidence marked CURRENT is the applicable rule on the given date; (4) if the passages do not
 answer the question, set "insufficient" to true and return no claims; (5) if CHANGES IN FORCE are listed, the earlier
 provision no longer applies: state the revised provision and cite the passage that states it; (6) copy numbers, amounts
-and dates exactly as the passage writes them.
+and dates exactly as the passage writes them. Write every claim in English, even if the question is Hindi or Hinglish.
 Reply with JSON only: {"claims":[{"text":"...","evidence":["<id>"]}],"insufficient":false}"""
+
+REWRITE = """Rewrite the student's question, which is in Hinglish or Hindi, as one short English search query about
+college rules. Keep every specific detail (numbers, years, course, document or office names). Do not answer it and do
+not add facts. Reply with JSON only: {"query":"<English query>"}"""
 
 
 def changes_block(changes, as_of) -> str:
@@ -89,6 +93,12 @@ class LLMGenerator:
         claims = [{"text": c["text"], "evidence": [e for e in c.get("evidence", []) if e in valid]}
                   for c in data.get("claims", []) if c.get("text")]
         return claims, bool(data.get("insufficient", not claims))
+
+    def rewrite(self, question: str) -> str | None:
+        """English search query for a Hinglish or Hindi question, or None if the model gives nothing usable."""
+        data = chat_json(REWRITE, question, max_tokens=400, required_key="query", temperature=0, reasoning_effort="low")
+        query = re.sub(r"\s+", " ", str(data.get("query") or "")).strip()
+        return query[:200] or None
 
 
 def get_generator():

@@ -52,6 +52,14 @@ class Pipeline:
         self.retriever = Retriever(self.chunks)
         self.generator = get_generator()
 
+    def _english_query(self, question: str):
+        """LLM rewrite of a Hinglish/Hindi question into an English search query; None falls back to the gloss."""
+        try:
+            return self.generator.rewrite(question)
+        except RuntimeError as e:
+            print(f"[pipeline] query rewrite failed, using the gloss: {e}", file=sys.stderr)
+            return None
+
     def _cite(self, chunk, excerpt=None):
         d = self.docs[chunk["doc_id"]]
         return {"chunk_id": chunk["id"], "doc_id": chunk["doc_id"], "title": d["title"], "version": d["version"],
@@ -70,16 +78,26 @@ class Pipeline:
         as_of = D(as_of) if isinstance(as_of, str) else (as_of or date.today())
         batch = str(batch) if batch else detect_batch(question)
         nq = normalize_query(question, self.retriever.vocab_list, self.retriever.vocab)
-        terms = content_tokens(nq.search_text)
-        hits = self.retriever.search(nq.search_text, mode)
+        english_query = self._english_query(question) if nq.language in ("hinglish", "hi") else None
+        if english_query:  # retrieval, coverage and generation all use the English rewrite
+            nq_en = normalize_query(english_query, self.retriever.vocab_list, self.retriever.vocab)
+            search_text, fixes = nq_en.search_text, nq_en.fixes
+            terms = content_tokens(search_text)
+        else:
+            search_text, fixes = nq.search_text, nq.fixes
+            terms = content_tokens(search_text)
+            if nq.language != "en":  # untranslated Hinglish/Hindi words are not evidence the passages must contain
+                terms = [t for t in terms if self.retriever.in_vocab(t)]
+        question_en = english_query or question
+        hits = self.retriever.search(search_text, mode)
         out = {"question": question, "mode": mode, "as_of": str(as_of), "batch": batch, "language": nq.language,
-               "search_text": nq.search_text, "spell_fixes": nq.fixes, "notices": [], "conflicts": [],
-               "retrieved_ids": [self.chunks[i]["id"] for i, _ in hits], "abstain_reason": None,
+               "search_text": search_text, "english_query": english_query, "spell_fixes": fixes, "notices": [],
+               "conflicts": [], "retrieved_ids": [self.chunks[i]["id"] for i, _ in hits], "abstain_reason": None,
                "embed_backend": self.retriever.dense.backend}
 
         if mode != "evidence_aware":  # baselines: no filtering, no verification
             ctx = [self.chunks[i] for i, _ in hits[:TOP_K_CONTEXT]]
-            claims, _ = self.generator.generate(question, terms, ctx, as_of, batch)
+            claims, _ = self.generator.generate(question_en, terms, ctx, as_of, batch)
             self._finish(out, claims, ctx, enforce=False)
             out["coverage"] = None
             out["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
@@ -89,7 +107,7 @@ class Pipeline:
         considered = 0  # passages that would compete for the context; only these can raise a conflict or notice
         for i, _ in hits:
             c = self.chunks[i]
-            if c["kind"] == "control" and not CHANGE_WORDS.search(question):
+            if c["kind"] == "control" and not CHANGE_WORDS.search(question_en):
                 continue
             doc = self.docs[c["doc_id"]]
             st = applicability(doc, c, as_of, batch, self.docs, self.amend_by_id)
@@ -148,7 +166,7 @@ class Pipeline:
                 if a["id"] not in seen:
                     seen.add(a["id"])
                     changes.append(a)
-        claims, insufficient = self.generator.generate(question, terms, ctx, as_of, batch, changes=changes)
+        claims, insufficient = self.generator.generate(question_en, terms, ctx, as_of, batch, changes=changes)
         if insufficient or not claims:
             return self._finish_abstain(out, "generator found the evidence insufficient", question, t0)
         self._finish(out, claims, ctx, enforce=True)

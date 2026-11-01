@@ -36,6 +36,9 @@ class Retriever:
     def idf(self, t):  # out-of-vocabulary terms count as maximally informative
         return self._idf.get(t, self._max_idf)
 
+    def in_vocab(self, stemmed_term: str) -> bool:
+        return stemmed_term in self._idf
+
     def _dense_scores(self, query: str) -> np.ndarray:
         return self.emb @ self.embedder.encode([query], normalize_embeddings=True)[0]
 

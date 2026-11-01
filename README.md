@@ -42,6 +42,12 @@ Notes:
   returns conflicts when circular amendments were extracted at startup). The fixture is not in production builds.
 - `npm run build` writes a static build to `web/dist/`.
 
+## Hinglish and Hindi
+Questions in Hinglish or Hindi (Devanagari) are rewritten to a short English search query by one LLM call
+(temperature 0); that query drives retrieval, the evidence-coverage check and generation, and is returned as
+`english_query`. If the call fails, a built-in word gloss is used instead. Answers are always written in English,
+because every claim is verified word-by-word against the English source passages.
+
 ## Adding documents
 Drop any text-layer PDF into `data/pdfs/` (or set `SPIT_DOCS_DIR`). Scanned PDFs (no text layer) are skipped
 with a warning. OCR is disabled.

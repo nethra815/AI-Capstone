@@ -11,7 +11,8 @@ STOP = set(
 GENERIC = {"student", "students", "college", "spit", "institute", "please", "tell", "know", "want", "need", "give",
            "rule", "rules", "policy", "required", "require", "number", "many", "much", "sit", "appear",
            "whats", "hows", "happen", "happens", "found", "b", "tech", "btech", "de", "main", "ho", "ko", "ka", "ke",
-           "se", "mein", "bhi", "toh", "to", "yeh", "woh", "kar", "kare", "ye", "wo"}
+           "se", "mein", "bhi", "toh", "to", "yeh", "woh", "kar", "kare", "ye", "wo",
+           "में", "को", "का", "की", "के", "है", "हैं", "क्या", "कितना", "कितनी", "कितने", "से", "पर", "और", "मैं", "मेरा", "मेरी"}
 # light synonym folding so "exam" matches "examination", "calculated" matches "computation", etc.
 SYN = {"examination": "exam", "examinations": "exam", "calculate": "comput", "calculated": "comput", "calculation": "comput",
        "computation": "comput", "computed": "comput", "compute": "comput", "evaluated": "evaluation", "reevaluation": "evaluation",
@@ -28,10 +29,22 @@ GLOSS = {
     "sakta": "can eligible", "sakte": "can eligible", "nahi": "not", "paise": "fee",
     "mera": "my", "meri": "my", "pariksha": "exam", "hajiri": "attendance", "kam": "low shortage",
     "dobara": "re-exam retake", "ank": "marks", "tareekh": "date", "ki": "", "hai": "", "hu": "", "hoon": "",
+    # common campus Hinglish (used only when the LLM rewrite to English is unavailable)
+    "mehmaan": "guest", "mehman": "guest", "raat": "night overnight", "ruk": "stay", "rukna": "stay",
+    "chahiye": "required minimum", "chahie": "required minimum", "liye": "", "kitab": "book", "kitabein": "books",
+    "kitaben": "books", "jurmana": "fine", "der": "late", "deri": "late", "wapas": "return",
+    "lautana": "return", "samay": "time", "waqt": "time", "chutti": "leave", "chhutti": "leave", "naukri": "placement",
+    "kamra": "room", "khana": "mess food", "bahar": "outside", "jaana": "go", "jana": "go", "aana": "come",
+    "kaise": "how", "kyun": "why", "kaun": "who", "kahan": "where", "milega": "get", "milti": "get", "milta": "get",
+    "sakti": "can eligible", "karna": "", "hota": "", "hoti": "", "hain": "", "tak": "until",
     "उपस्थिति": "attendance", "परीक्षा": "exam", "शुल्क": "fee", "अंक": "marks", "तारीख": "date", "फीस": "fee",
+    "हॉस्टल": "hostel", "छात्रावास": "hostel", "लाइब्रेरी": "library", "पुस्तकालय": "library", "किताब": "book",
+    "किताबें": "books", "जुर्माना": "fine", "देर": "late", "समय": "time", "रात": "night", "वापस": "return",
+    "मेहमान": "guest", "छुट्टी": "leave", "प्लेसमेंट": "placement", "छात्रवृत्ति": "scholarship", "शिकायत": "grievance",
 }
 HINGLISH_MARKERS = {"kya", "hai", "hu", "hoon", "kitna", "kitni", "kitne", "mera", "meri", "nahi", "sakta", "sakte",
-                    "kab", "ki", "ka", "ke", "mein", "se", "pe", "paise", "dobara"}
+                    "kab", "ki", "ka", "ke", "mein", "se", "pe", "paise", "dobara", "chahiye", "liye", "kaise", "sakti",
+                    "hain", "milega", "raat", "kitab"}
 
 
 def tokenize(text: str) -> list[str]:
