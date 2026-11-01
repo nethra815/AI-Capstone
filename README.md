@@ -17,6 +17,31 @@ Settings come from `.env` (or real environment variables, which take priority). 
 The first question in a process initializes the PDF index, embeddings, reranker, and amendment extraction.
 Use interactive mode or reuse `spitrag.pipeline.get_pipeline()` from an application to avoid rebuilding them.
 
+## Web app (SPIT Campus Assistant)
+A FastAPI backend (`api/`) wraps the pipeline, and a Vite + React frontend (`web/`) provides the Ask, Documents and
+Research views. Run both in two terminals from the project root:
+
+    # 1. backend (needs .env with GROQ_API_KEY; first start takes ~2 minutes while documents and models load)
+    pip install -r requirements.txt
+    uvicorn api.main:app --reload --port 8000
+
+    # 2. frontend (Node 18+)
+    cd web && npm install && npm run dev      # open http://localhost:5173
+
+The frontend proxies `/api` to port 8000, so no extra configuration is needed. The page shows a loading line and
+keeps the question box disabled until `/api/health` reports the pipeline is ready.
+
+API endpoints: `GET /api/health`, `POST /api/ask` (`{question, as_of?, batch?, mode?}`), `GET /api/documents`,
+`GET /api/documents/{doc_id}/pdf`, `GET /api/chunks/{chunk_id}`, `POST /api/feedback` (appends to
+`data/feedback.jsonl`, no personal data), `GET /api/eval` (summary of `eval/results/per_question.csv`).
+
+Notes:
+- The free Groq tier allows roughly 4 questions a minute. The API waits and retries once on a short rate limit,
+  otherwise the page shows "try again in N seconds" with a retry button.
+- In `npm run dev`, typing `dev:conflict` shows a fixture of the "Policy changed" view (the live pipeline only
+  returns conflicts when circular amendments were extracted at startup). The fixture is not in production builds.
+- `npm run build` writes a static build to `web/dist/`.
+
 ## Adding documents
 Drop any text-layer PDF into `data/pdfs/` (or set `SPIT_DOCS_DIR`). Scanned PDFs (no text layer) are skipped
 with a warning. OCR is disabled.
