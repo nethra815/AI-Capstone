@@ -26,9 +26,46 @@ def _first(pattern, text, flags=re.I | re.M):
     return re.sub(r"\s+", " ", m.group(1)).strip() if m else None
 
 
+# Field names used in the documents' metadata tables; a title value ends where the next field begins.
+FIELD_LABELS = {"document id", "issuing department", "approving authority", "approving body", "version",
+                "publication date", "effective date", "supersedes", "superseded by", "status", "related documents",
+                "applicable academic year", "approved by", "ratified by", "amends", "keywords", "field", "details",
+                "category", "authorised signatories", "reissued", "relationship"}
+INSTITUTION = re.compile(r"institute of technology|\(spit\)", re.I)
+NOT_A_TITLE = re.compile(
+    r"synthetic|research|fictional|not an actual|archived|^document control$|^details$|^field$|^page\s+\d+|"
+    r"^version\b|^academic year\b|^undergraduate programmes|\|", re.I)
+
+
+def _title_field(lines):
+    """Value of a 'Document Title' or 'Title' row in the metadata table, which may wrap onto the next line."""
+    for i, line in enumerate(lines):
+        if line.lower() not in ("document title", "title"):
+            continue
+        parts = []
+        for nxt in lines[i + 1:i + 3]:
+            if nxt.lower() in FIELD_LABELS:
+                break
+            # a wrapped value continues after "(2026–" or "... and", or with a parenthetical such as "(2026–27)"
+            if parts and not (re.search(r"[(–-]$|\band$", parts[-1]) or nxt.startswith("(")):
+                break
+            parts.append(nxt)
+        title = ""
+        for p in parts:
+            title += p if re.search(r"[(–-]$", title) else (" " if title else "") + p
+        if title and not re.fullmatch(ID_PAT, title):
+            return title
+    return None
+
+
 def _title(pages):
-    for line in (l.strip() for l in pages[0].splitlines()):
-        if len(line.split()) >= 3 and "SYNTHETIC" not in line.upper() and "RESEARCH" not in line.upper():
+    lines = [l.strip() for l in pages[0].splitlines() if l.strip()]
+    found = _title_field(lines[:40])
+    if found:
+        return found
+    for line in lines[:15]:  # otherwise the first line that is not page furniture, the institution, an id or a number
+        if (len(line.split()) >= 2 and re.search(r"[A-Za-z]{3}", line) and not NOT_A_TITLE.search(line)
+                and not INSTITUTION.search(line) and not re.fullmatch(ID_PAT, line)):
             return line
     return None
 
@@ -47,7 +84,7 @@ def parse_document(pdf: dict) -> dict:
     superseded_on = _date(_first(r"Superseded on\s+" + DATE_PAT, full))
     m = re.search(r"batches admitted in\s+(\d{4})-\d{2}\s+and\s+(\d{4})-\d{2}", full, re.I)
     legacy = sorted({int(g) for g in m.groups()}) if m else []
-    is_circular = "circular" in title.lower() or "/CIR/" in doc_id
+    is_circular = "circular" in title.lower() or "/CIR/" in doc_id or "-CIR-" in doc_id
     return {
         "doc_id": doc_id, "family": family, "title": title, "version": version, "file": pdf["file"],
         "doc_type": "circular" if is_circular else "document",

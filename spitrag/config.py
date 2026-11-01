@@ -30,3 +30,10 @@ MAX_CHUNK_WORDS = 170
 ABSTAIN_MIN_COVERAGE = float(os.getenv("SPIT_ABSTAIN_COVERAGE", "0.55"))
 SUPPORT_MIN_RECALL = 0.7
 MIN_QUERY_TERMS = 2
+
+# LLM call settings. A fixed seed and temperature 0 keep extraction and answers as repeatable as the provider allows.
+LLM_SEED = int(os.getenv("SPIT_LLM_SEED", "7"))
+LLM_TIMEOUT_S = float(os.getenv("SPIT_LLM_TIMEOUT", "90"))
+
+# Startup cache (embeddings and verified amendments). SPIT_NO_CACHE=1 forces a rebuild.
+CACHE_DIR = Path(os.getenv("SPIT_CACHE_DIR", ROOT / "data" / ".cache"))

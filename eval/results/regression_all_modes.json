@@ -1,0 +1,76 @@
+{
+  "startup": {
+    "seconds": 35.7,
+    "llm_calls": 0,
+    "tokens": 0,
+    "amendments": [
+      "SPIT-ACA-CIR-2026-27-003#1",
+      "SPIT-ACA-CIR-2026-27-003#2",
+      "SPIT/ACAD/CIR/2026-27/03#1",
+      "SPIT/ACAD/CIR/2026-27/03#2",
+      "SPIT/ACAD/CIR/2026-27/03#3",
+      "SPIT/ACAD/CIR/2026-27/03#4",
+      "SPIT/ACAD/CIR/2026-27/03#5",
+      "SPIT/ACAD/CIR/2026-27/03#6",
+      "SPIT/ACAD/CIR/2026-27/03#8",
+      "SPIT/ACAD/CIR/2026-27/03#9"
+    ]
+  },
+  "questions": 19,
+  "modes": [
+    "vector",
+    "hybrid",
+    "hybrid_rerank",
+    "evidence_aware"
+  ],
+  "per_mode": {
+    "vector": {
+      "accuracy": 0.6842,
+      "stale_errors": 4,
+      "abstention_rate": 0.1579,
+      "abstention_recall": 1.0,
+      "over_refusal": 0.0588,
+      "hinglish_hindi_correct": "4/6",
+      "errors": 0,
+      "avg_tokens": 1119.3,
+      "avg_latency_ms": 2245.4,
+      "truncated_replies": 0
+    },
+    "hybrid": {
+      "accuracy": 0.7368,
+      "stale_errors": 4,
+      "abstention_rate": 0.1579,
+      "abstention_recall": 1.0,
+      "over_refusal": 0.0588,
+      "hinglish_hindi_correct": "5/6",
+      "errors": 0,
+      "avg_tokens": 1168.1,
+      "avg_latency_ms": 2565.0,
+      "truncated_replies": 0
+    },
+    "hybrid_rerank": {
+      "accuracy": 0.7368,
+      "stale_errors": 4,
+      "abstention_rate": 0.1579,
+      "abstention_recall": 1.0,
+      "over_refusal": 0.0588,
+      "hinglish_hindi_correct": "5/6",
+      "errors": 0,
+      "avg_tokens": 1235.7,
+      "avg_latency_ms": 5958.7,
+      "truncated_replies": 0
+    },
+    "evidence_aware": {
+      "accuracy": 0.6842,
+      "stale_errors": 0,
+      "abstention_rate": 0.4211,
+      "abstention_recall": 1.0,
+      "over_refusal": 0.3529,
+      "hinglish_hindi_correct": "4/6",
+      "errors": 0,
+      "avg_tokens": 812.3,
+      "avg_latency_ms": 4495.7,
+      "truncated_replies": 0
+    }
+  }
+}

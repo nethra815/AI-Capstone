@@ -15,10 +15,11 @@ import time
 from threading import Lock
 from datetime import date
 
+from . import amendments as amendments_mod, cache
 from .amendments import attach_amendments, extract_amendments
-from .config import ABSTAIN_MIN_COVERAGE, MIN_QUERY_TERMS, TOP_K_CONTEXT
+from .config import ABSTAIN_MIN_COVERAGE, LLM_MODEL, MIN_QUERY_TERMS, TOP_K_CONTEXT
 from .docmeta import build_documents
-from .generate import get_generator, unit_scores, units_of
+from .generate import best_excerpt, evidence_text, get_generator, unit_scores, units_of
 from .ingest import build_chunks
 from .pdf_source import load_all
 from .retrieve import Retriever
@@ -44,7 +45,7 @@ class Pipeline:
         self.docs = build_documents(self.pdfs)
         self.chunks = build_chunks(self.pdfs, self.docs)
         self.by_id = {c["id"]: c for c in self.chunks}
-        self.amendments = extract_amendments(self.docs, self.pdfs)
+        self.amendments = self._load_amendments()
         attach_amendments(self.chunks, self.amendments)
         self.amend_by_id = amendment_index(self.amendments)
         print(f"[pipeline] {len(self.docs)} documents, {len(self.chunks)} chunks, {len(self.amendments)} amendments",
@@ -52,12 +53,37 @@ class Pipeline:
         self.retriever = Retriever(self.chunks)
         self.generator = get_generator()
 
-    def _cite(self, chunk, excerpt=None):
+    def _load_amendments(self):
+        """Verified amendments from the cache, or extracted with the LLM (and cached) when any input changed."""
+        key = cache.digest("amendments", cache.pdf_fingerprint(), LLM_MODEL, amendments_mod.PROMPT,
+                           amendments_mod.RETRY, amendments_mod.FUZZY_MIN, sorted(self.docs.items()),
+                           [(c["id"], c["clauses"]) for c in self.chunks])
+        cached = cache.load_json("amendments", key)
+        if cached is not None:
+            return cached
+        found = extract_amendments(self.docs, self.pdfs)
+        if found or not any(d["doc_type"] == "circular" for d in self.docs.values()):
+            cache.save_json("amendments", key, found)
+        else:  # nothing kept although circulars exist: likely a bad LLM run, so don't pin it in the cache
+            print("[pipeline] no amendments kept; not caching this result", file=sys.stderr)
+        return found
+
+    def _english_query(self, question: str):
+        """LLM rewrite of a Hinglish/Hindi question into an English search query; None falls back to the gloss."""
+        try:
+            return self.generator.rewrite(question)
+        except RuntimeError as e:
+            print(f"[pipeline] query rewrite failed, using the gloss: {e}", file=sys.stderr)
+            return None
+
+    def _cite(self, chunk, claim_text=None):
+        """Citation for a passage. The excerpt is the passage's own best-matching sentence(s) for the claim."""
         d = self.docs[chunk["doc_id"]]
+        excerpt = (best_excerpt(chunk, claim_text, self.retriever.idf) if claim_text
+                   else " ".join(units_of(chunk))[:300])
         return {"chunk_id": chunk["id"], "doc_id": chunk["doc_id"], "title": d["title"], "version": d["version"],
                 "section": chunk["heading"], "clauses": chunk["clauses"], "pages": chunk["pages"],
-                "published_on": d["published_on"], "effective_from": d["effective_from"],
-                "excerpt": (excerpt or " ".join(units_of(chunk)))[:300]}
+                "published_on": d["published_on"], "effective_from": d["effective_from"], "excerpt": excerpt}
 
     def _abstain(self, out, reason, question):
         out.update(outcome="abstain", abstain_reason=reason, claims=[], claims_text="",
@@ -70,38 +96,53 @@ class Pipeline:
         as_of = D(as_of) if isinstance(as_of, str) else (as_of or date.today())
         batch = str(batch) if batch else detect_batch(question)
         nq = normalize_query(question, self.retriever.vocab_list, self.retriever.vocab)
-        terms = content_tokens(nq.search_text)
-        hits = self.retriever.search(nq.search_text, mode)
+        english_query = self._english_query(question) if nq.language in ("hinglish", "hi") else None
+        if english_query:  # retrieval, coverage and generation all use the English rewrite
+            nq_en = normalize_query(english_query, self.retriever.vocab_list, self.retriever.vocab)
+            search_text, fixes = nq_en.search_text, nq_en.fixes
+            terms = content_tokens(search_text)
+        else:
+            search_text, fixes = nq.search_text, nq.fixes
+            terms = content_tokens(search_text)
+            if nq.language != "en":  # untranslated Hinglish/Hindi words are not evidence the passages must contain
+                terms = [t for t in terms if self.retriever.in_vocab(t)]
+        question_en = english_query or question
+        hits = self.retriever.search(search_text, mode)
         out = {"question": question, "mode": mode, "as_of": str(as_of), "batch": batch, "language": nq.language,
-               "search_text": nq.search_text, "spell_fixes": nq.fixes, "notices": [], "conflicts": [],
-               "retrieved_ids": [self.chunks[i]["id"] for i, _ in hits], "abstain_reason": None,
+               "search_text": search_text, "english_query": english_query, "spell_fixes": fixes, "notices": [],
+               "conflicts": [], "retrieved_ids": [self.chunks[i]["id"] for i, _ in hits], "abstain_reason": None,
                "embed_backend": self.retriever.dense.backend}
 
         if mode != "evidence_aware":  # baselines: no filtering, no verification
             ctx = [self.chunks[i] for i, _ in hits[:TOP_K_CONTEXT]]
-            claims, _ = self.generator.generate(question, terms, ctx, as_of, batch)
+            claims, _ = self.generator.generate(question_en, terms, ctx, as_of, batch)
             self._finish(out, claims, ctx, enforce=False)
             out["coverage"] = None
             out["latency_ms"] = round((time.perf_counter() - t0) * 1000, 1)
             return out
 
         cand, amended, upcoming = [], [], {}
+        considered = 0  # passages that would compete for the context; only these can raise a conflict or notice
         for i, _ in hits:
             c = self.chunks[i]
-            if c["kind"] == "control" and not CHANGE_WORDS.search(question):
+            if c["kind"] == "control" and not CHANGE_WORDS.search(question_en):
                 continue
             doc = self.docs[c["doc_id"]]
             st = applicability(doc, c, as_of, batch, self.docs, self.amend_by_id)
-            if st == "not_yet_effective" and c.get("amend_ids"):
+            relevant = considered < TOP_K_CONTEXT
+            if st == "not_yet_effective" and c.get("amend_ids") and relevant:
                 for aid in c["amend_ids"]:
                     upcoming[aid] = self.amend_by_id[aid]
             if st != "current":
                 continue
+            considered += 1
             active, up = amendments_for_chunk(c, as_of, self.amendments)
-            for a, _ in up:
-                upcoming[a["id"]] = a
+            if relevant:
+                for a, _ in up:
+                    upcoming[a["id"]] = a
             if active:
-                amended.append((c, active))
+                if relevant:  # an amended passage far down the ranking is not what the question is about
+                    amended.append((c, active))
                 continue
             cand.append(c)
 
@@ -109,7 +150,8 @@ class Pipeline:
         for c, active in amended:
             a0, clause = active[0][0], active[0][1]
             out["conflicts"].append({
-                "older_source": self._cite(c)["title"] + f" cl. {clause}", "older_says": " ".join(units_of(c))[:220],
+                "older_source": self._cite(c)["title"] + f" cl. {clause}",
+                "older_says": re.sub(r"\s+", " ", evidence_text(c)).strip()[:220],
                 "newer_source": f"{a0['circular']} item {a0['item']}",
                 "newer_says": "; ".join(a["summary"] for a, _ in active),
                 "applies": f"newer (effective {a0['effective_from']}) as of {as_of}"})
@@ -135,7 +177,15 @@ class Pipeline:
         if out["coverage"] < ABSTAIN_MIN_COVERAGE:
             return self._finish_abstain(out, f"low evidence coverage ({out['coverage']})", question, t0)
 
-        claims, insufficient = self.generator.generate(question, terms, ctx, as_of, batch)
+        # Verified circular changes in force: the model is told which value replaced which, so it can't read the
+        # circular's before/after table the wrong way round. Its claims are still checked against the passages.
+        changes, seen = [], set()
+        for _, active in amended:
+            for a, _ in active:
+                if a["id"] not in seen:
+                    seen.add(a["id"])
+                    changes.append(a)
+        claims, insufficient = self.generator.generate(question_en, terms, ctx, as_of, batch, changes=changes)
         if insufficient or not claims:
             return self._finish_abstain(out, "generator found the evidence insufficient", question, t0)
         self._finish(out, claims, ctx, enforce=True)
