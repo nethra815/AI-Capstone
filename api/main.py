@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import FastAPI
+from openai import RateLimitError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, field_validator
@@ -32,7 +33,9 @@ class _State:
     error: Optional[str] = None
     started = time.time()
     ready_after: Optional[float] = None
+    attempt = 0
     llm_failures = 0
+    rate_limited = 0
     asks = 0
 
 
@@ -40,16 +43,27 @@ state = _State()
 _feedback_lock = threading.Lock()
 
 
+STARTUP_ATTEMPTS = 3
+
+
 def _build_pipeline():
-    try:
-        state.pipeline = get_pipeline()
-        state.ready_after = round(time.time() - state.started, 1)
-    except SystemExit as e:  # spitrag raises SystemExit for missing key / missing PDFs
-        state.error = str(e)
-    except Exception as e:  # noqa: BLE001 - surface any startup failure through /api/health
-        state.error = f"{type(e).__name__}: {e}"
-    if state.error:
-        print(f"[api] pipeline failed to start: {state.error}", file=sys.stderr)
+    # Startup calls the LLM (amendment extraction), so a slow or flaky API can fail it; retry a few times.
+    for attempt in range(1, STARTUP_ATTEMPTS + 1):
+        state.attempt = attempt
+        try:
+            state.pipeline = get_pipeline()
+            state.ready_after = round(time.time() - state.started, 1)
+            return
+        except SystemExit as e:  # spitrag raises SystemExit for missing key / missing PDFs: retrying won't help
+            state.error = str(e)
+            break
+        except Exception as e:  # noqa: BLE001 - surface any startup failure through /api/health
+            print(f"[api] pipeline start attempt {attempt} failed: {type(e).__name__}: {e}", file=sys.stderr)
+            if attempt == STARTUP_ATTEMPTS:
+                state.error = f"{type(e).__name__}: {e}"
+            else:
+                time.sleep(5 * attempt)
+    print(f"[api] pipeline failed to start: {state.error}", file=sys.stderr)
 
 
 @asynccontextmanager
@@ -84,8 +98,9 @@ def health():
     p = state.pipeline
     out = {"ready": p is not None, "documents": len(p.docs) if p else 0, "chunks": len(p.chunks) if p else 0,
            "amendments": len(p.amendments) if p else 0,
-           "loading_seconds": None if p else round(time.time() - state.started, 1),
-           "asks": state.asks, "llm_failures": state.llm_failures}
+           "loading_seconds": None if p or state.error else round(time.time() - state.started, 1),
+           "startup_attempt": state.attempt,
+           "asks": state.asks, "llm_failures": state.llm_failures, "rate_limited": state.rate_limited}
     if state.error:
         out["error"] = state.error
     return out
@@ -125,13 +140,33 @@ class AskBody(BaseModel):
         return v
 
 
+def _retry_after(e) -> float:
+    """Seconds the LLM provider asked us to wait ("Please try again in 5.64s"), default 10."""
+    m = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", str(e))
+    return (int(m.group(1) or 0) * 60 + float(m.group(2))) if m else 10.0
+
+
 @app.post("/api/ask")
 def ask(body: AskBody):
     if state.pipeline is None:
         return _not_ready()
     state.asks += 1
     try:
-        return state.pipeline.ask(body.question, as_of=body.as_of, batch=body.batch, mode=body.mode)
+        try:
+            return state.pipeline.ask(body.question, as_of=body.as_of, batch=body.batch, mode=body.mode)
+        except RateLimitError as e:  # free Groq tiers allow only a few questions a minute; wait once if it is short
+            wait = _retry_after(e)
+            if wait > 20:
+                raise
+            print(f"[api] rate limited, retrying in {wait:.1f}s", file=sys.stderr)
+            time.sleep(wait + 0.5)
+            return state.pipeline.ask(body.question, as_of=body.as_of, batch=body.batch, mode=body.mode)
+    except RateLimitError as e:
+        state.rate_limited += 1
+        wait = round(_retry_after(e))
+        return JSONResponse({"error": "rate_limited", "retry_after": wait,
+                             "message": f"The language model's usage limit was reached. Please try again in about {wait} seconds."},
+                            status_code=429, headers={"Retry-After": str(wait)})
     except SystemExit as e:  # GROQ_API_KEY missing
         return _error(500, "llm_not_configured", f"The language model is not configured on the server: {e}")
     except RuntimeError as e:  # e.g. "LLM returned no JSON"
@@ -256,6 +291,18 @@ def document_pdf(doc_id: str):
         return _error(404, "not_found", "The PDF for this document is not available.")
     return FileResponse(path, media_type="application/pdf",
                         headers={"Content-Disposition": f'inline; filename="{path.name}"'})
+
+
+@app.get("/api/chunks/{chunk_id}")
+def chunk(chunk_id: str):
+    """The full source passage behind a citation (citations only carry the claim text as their excerpt)."""
+    if state.pipeline is None:
+        return _not_ready()
+    c = state.pipeline.by_id.get(chunk_id)
+    if not c:
+        return _error(404, "not_found", "No passage with that ID.")
+    return {"id": c["id"], "doc_id": c["doc_id"], "section": c["heading"], "clauses": c["clauses"],
+            "pages": c["pages"], "text": c["text"]}
 
 
 # ---------- feedback ----------
