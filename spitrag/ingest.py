@@ -7,7 +7,19 @@ SECTION = re.compile(r"^(\d+)\.\s+[A-Z][^.]{0,90}$")       # "4. Attendance Rule
 CLAUSE = re.compile(r"^\d+\.\d+(?:\.\d+)*\s+\S")             # "4.3.1 Duty leave ..."
 ITEM = re.compile(r"^Items?\s+\d+(?:\s+and\s+\d+|-\d+)?\s*[-–.:]")  # "Item 1 - Duty leave." (circular)
 ROW = re.compile(r"^\d{1,2}\s+[A-Z][A-Za-z ]+")              # circular summary-table rows "1 Duty leave cap ..."
-CLAUSE_LABEL = re.compile(r"(?<![\d.])(\d+\.\d+(?:\.\d+)*)(?![\d])")
+# A clause label starts a line ("4.5 Condonation: ..."). Numbers elsewhere in the text ("65.00%", a CGPA of "6.00") are
+# values, not clauses. An explicit in-section reference ("Section 7.3", "Clause 7.3") also names a clause.
+LINE_LABEL = re.compile(r"^(\d{1,2}(?:\.\d{1,2}){1,3})(?=[\s:.)]|$)", re.M)
+REF_LABEL = re.compile(r"\b(?:Section|Clause|cl\.)\s+(\d{1,2}(?:\.\d{1,2}){1,3})(?![\d.]*\d)", re.I)
+
+
+def clause_labels(text: str, section_no: str | None) -> list[str]:
+    labels = set(LINE_LABEL.findall(text))
+    if section_no:
+        labels = {l for l in labels if l.split(".")[0] == section_no}
+        labels |= {l for l in REF_LABEL.findall(text) if l.split(".")[0] == section_no}
+        labels.add(section_no)
+    return sorted(labels, key=lambda s: [int(p) for p in s.split(".")])
 DOC_CONTROL_END = re.compile(r"^\d+\.\s+[A-Z]")
 
 
@@ -36,8 +48,7 @@ def chunk_document(doc: dict, pdf_pages: list[str]) -> list[dict]:
         text = "\n".join(t for _, t in cur)
         pages = sorted({p for p, _ in cur})
         kind = "control" if in_control and section_no is None else "body"
-        labels = sorted({x for x in CLAUSE_LABEL.findall(text)} | ({section_no} if section_no else set()),
-                        key=lambda s: [int(p) for p in s.split(".")])
+        labels = clause_labels(text, section_no)
         idx = len(chunks)
         chunks.append({
             "id": f"{prefix}_{idx:03d}", "doc_id": doc["doc_id"], "family": doc["family"], "doc_type": doc["doc_type"], "title": doc["title"],

@@ -5,7 +5,7 @@ The model must return JSON. Claims citing unknown ids are dropped; the verifier 
 import re
 
 from .llm import chat_json
-from .text import tokens_stem
+from .text import content_tokens, tokens_stem
 
 
 def _cells(line):
@@ -46,6 +46,21 @@ Reply with JSON only: {"claims":[{"text":"...","evidence":["<id>"]}],"insufficie
 REWRITE = """Rewrite the student's question, which is in Hinglish or Hindi, as one short English search query about
 college rules. Keep every specific detail (numbers, years, course, document or office names). Do not answer it and do
 not add facts. Reply with JSON only: {"query":"<English query>"}"""
+
+
+def best_excerpt(chunk: dict, claim_text: str, idf, limit: int = 300) -> str:
+    """The sentence(s) of the source passage that best support a claim, in their original order."""
+    flat = re.sub(r"\s+", " ", evidence_text(chunk)).strip()
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+(?=[A-Z₹0-9(])", flat) if s]
+    pseudo = {"id": chunk["id"], "heading": "", "clauses": [], "text": "\n".join(sentences)}
+    scored = [s for s in unit_scores(content_tokens(claim_text), [pseudo], idf) if s[0] > 0]
+    if not scored:
+        return flat[:limit]
+    picked = [scored[0][1]]
+    if len(picked[0]) < 120 and len(scored) > 1:  # a short best sentence gets its runner-up for context
+        picked.append(scored[1][1])
+    picked.sort(key=flat.find)
+    return " ".join(picked)[:limit]
 
 
 def changes_block(changes, as_of) -> str:

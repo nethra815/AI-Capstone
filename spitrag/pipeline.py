@@ -19,7 +19,7 @@ from . import amendments as amendments_mod, cache
 from .amendments import attach_amendments, extract_amendments
 from .config import ABSTAIN_MIN_COVERAGE, LLM_MODEL, MIN_QUERY_TERMS, TOP_K_CONTEXT
 from .docmeta import build_documents
-from .generate import get_generator, unit_scores, units_of
+from .generate import best_excerpt, get_generator, unit_scores, units_of
 from .ingest import build_chunks
 from .pdf_source import load_all
 from .retrieve import Retriever
@@ -76,12 +76,14 @@ class Pipeline:
             print(f"[pipeline] query rewrite failed, using the gloss: {e}", file=sys.stderr)
             return None
 
-    def _cite(self, chunk, excerpt=None):
+    def _cite(self, chunk, claim_text=None):
+        """Citation for a passage. The excerpt is the passage's own best-matching sentence(s) for the claim."""
         d = self.docs[chunk["doc_id"]]
+        excerpt = (best_excerpt(chunk, claim_text, self.retriever.idf) if claim_text
+                   else " ".join(units_of(chunk))[:300])
         return {"chunk_id": chunk["id"], "doc_id": chunk["doc_id"], "title": d["title"], "version": d["version"],
                 "section": chunk["heading"], "clauses": chunk["clauses"], "pages": chunk["pages"],
-                "published_on": d["published_on"], "effective_from": d["effective_from"],
-                "excerpt": (excerpt or " ".join(units_of(chunk)))[:300]}
+                "published_on": d["published_on"], "effective_from": d["effective_from"], "excerpt": excerpt}
 
     def _abstain(self, out, reason, question):
         out.update(outcome="abstain", abstain_reason=reason, claims=[], claims_text="",
