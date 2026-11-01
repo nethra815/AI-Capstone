@@ -38,15 +38,27 @@ def unit_scores(terms, context, idf):
 SYSTEM = """You answer student questions about college regulations using ONLY the evidence passages provided.
 Rules: (1) every factual claim must cite the passage ids that support it; (2) never add a rule, number or date that is
 not in the passages; (3) evidence marked CURRENT is the applicable rule on the given date; (4) if the passages do not
-answer the question, set "insufficient" to true and return no claims.
+answer the question, set "insufficient" to true and return no claims; (5) if CHANGES IN FORCE are listed, the earlier
+provision no longer applies: state the revised provision and cite the passage that states it; (6) copy numbers, amounts
+and dates exactly as the passage writes them.
 Reply with JSON only: {"claims":[{"text":"...","evidence":["<id>"]}],"insufficient":false}"""
 
 
+def changes_block(changes, as_of) -> str:
+    """Verified circular amendments in force on the policy date, as plain lines for the prompt."""
+    if not changes:
+        return ""
+    lines = [f"- {a.get('subject')}: earlier provision {a.get('old_value')!r}; revised provision {a.get('new_value')!r}; "
+             f"in force from {a['effective_from']} ({a['circular']} item {a['item']})" for a in changes]
+    return f"CHANGES IN FORCE on {as_of} (verified from circulars):\n" + "\n".join(lines) + "\n\n"
+
+
 class LLMGenerator:
-    def generate(self, question, query_terms, context, as_of=None, batch=None):
+    def generate(self, question, query_terms, context, as_of=None, batch=None, changes=None):
         ev = "\n\n".join(f"[{c['id']}] {c['title']} v{c['version']} - {c['heading']}\n{c['text']}" for c in context)
         data = chat_json(SYSTEM, f"Policies apply as of: {as_of}. Student batch: {batch or 'unknown'}.\n\n"
-                                 f"EVIDENCE:\n{ev}\n\nQUESTION: {question}", required_key="claims")
+                                 f"{changes_block(changes, as_of)}EVIDENCE:\n{ev}\n\nQUESTION: {question}",
+                         required_key="claims", temperature=0)
         valid = {c["id"] for c in context}
         claims = [{"text": c["text"], "evidence": [e for e in c.get("evidence", []) if e in valid]}
                   for c in data.get("claims", []) if c.get("text")]

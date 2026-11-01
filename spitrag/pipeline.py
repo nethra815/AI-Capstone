@@ -86,22 +86,27 @@ class Pipeline:
             return out
 
         cand, amended, upcoming = [], [], {}
+        considered = 0  # passages that would compete for the context; only these can raise a conflict or notice
         for i, _ in hits:
             c = self.chunks[i]
             if c["kind"] == "control" and not CHANGE_WORDS.search(question):
                 continue
             doc = self.docs[c["doc_id"]]
             st = applicability(doc, c, as_of, batch, self.docs, self.amend_by_id)
-            if st == "not_yet_effective" and c.get("amend_ids"):
+            relevant = considered < TOP_K_CONTEXT
+            if st == "not_yet_effective" and c.get("amend_ids") and relevant:
                 for aid in c["amend_ids"]:
                     upcoming[aid] = self.amend_by_id[aid]
             if st != "current":
                 continue
+            considered += 1
             active, up = amendments_for_chunk(c, as_of, self.amendments)
-            for a, _ in up:
-                upcoming[a["id"]] = a
+            if relevant:
+                for a, _ in up:
+                    upcoming[a["id"]] = a
             if active:
-                amended.append((c, active))
+                if relevant:  # an amended passage far down the ranking is not what the question is about
+                    amended.append((c, active))
                 continue
             cand.append(c)
 
@@ -135,7 +140,15 @@ class Pipeline:
         if out["coverage"] < ABSTAIN_MIN_COVERAGE:
             return self._finish_abstain(out, f"low evidence coverage ({out['coverage']})", question, t0)
 
-        claims, insufficient = self.generator.generate(question, terms, ctx, as_of, batch)
+        # Verified circular changes in force: the model is told which value replaced which, so it can't read the
+        # circular's before/after table the wrong way round. Its claims are still checked against the passages.
+        changes, seen = [], set()
+        for _, active in amended:
+            for a, _ in active:
+                if a["id"] not in seen:
+                    seen.add(a["id"])
+                    changes.append(a)
+        claims, insufficient = self.generator.generate(question, terms, ctx, as_of, batch, changes=changes)
         if insufficient or not claims:
             return self._finish_abstain(out, "generator found the evidence insufficient", question, t0)
         self._finish(out, claims, ctx, enforce=True)

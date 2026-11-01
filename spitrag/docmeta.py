@@ -47,7 +47,7 @@ def parse_document(pdf: dict) -> dict:
     superseded_on = _date(_first(r"Superseded on\s+" + DATE_PAT, full))
     m = re.search(r"batches admitted in\s+(\d{4})-\d{2}\s+and\s+(\d{4})-\d{2}", full, re.I)
     legacy = sorted({int(g) for g in m.groups()}) if m else []
-    is_circular = "circular" in title.lower() or "/CIR/" in doc_id
+    is_circular = "circular" in title.lower() or "/CIR/" in doc_id or "-CIR-" in doc_id
     return {
         "doc_id": doc_id, "family": family, "title": title, "version": version, "file": pdf["file"],
         "doc_type": "circular" if is_circular else "document",

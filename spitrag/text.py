@@ -15,7 +15,10 @@ GENERIC = {"student", "students", "college", "spit", "institute", "please", "tel
 # light synonym folding so "exam" matches "examination", "calculated" matches "computation", etc.
 SYN = {"examination": "exam", "examinations": "exam", "calculate": "comput", "calculated": "comput", "calculation": "comput",
        "computation": "comput", "computed": "comput", "compute": "comput", "evaluated": "evaluation", "reevaluation": "evaluation",
-       "attendence": "attendance", "minimun": "minimum", "duration": "duration", "condone": "condonation", "condoned": "condonation"}
+       "attendence": "attendance", "minimun": "minimum", "duration": "duration", "condone": "condonation", "condoned": "condonation",
+       # month names and "sem" fold to the short forms the circulars use ("14-24 Dec 2026", "Sem I")
+       "january": "jan", "february": "feb", "march": "mar", "april": "apr", "june": "jun", "july": "jul",
+       "august": "aug", "september": "sep", "october": "oct", "november": "nov", "december": "dec", "sem": "semester"}
 
 TOKEN_RE = re.compile(r"[a-z0-9ऀ-ॿ]+(?:\.[0-9]+)?")
 
