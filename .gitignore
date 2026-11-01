@@ -1,9 +1,11 @@
 .env
 __pycache__/
 *.pyc
-.venv/data/feedback.jsonl
+.venv/
+data/feedback.jsonl
 node_modules/
 web/dist/
 *.tsbuildinfo
 data/.cache/
 .claude/launch.json
+.claude/settings.local.json
