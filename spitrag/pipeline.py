@@ -19,7 +19,7 @@ from . import amendments as amendments_mod, cache
 from .amendments import attach_amendments, extract_amendments
 from .config import ABSTAIN_MIN_COVERAGE, LLM_MODEL, MIN_QUERY_TERMS, TOP_K_CONTEXT
 from .docmeta import build_documents
-from .generate import best_excerpt, get_generator, unit_scores, units_of
+from .generate import best_excerpt, evidence_text, get_generator, unit_scores, units_of
 from .ingest import build_chunks
 from .pdf_source import load_all
 from .retrieve import Retriever
@@ -150,7 +150,8 @@ class Pipeline:
         for c, active in amended:
             a0, clause = active[0][0], active[0][1]
             out["conflicts"].append({
-                "older_source": self._cite(c)["title"] + f" cl. {clause}", "older_says": " ".join(units_of(c))[:220],
+                "older_source": self._cite(c)["title"] + f" cl. {clause}",
+                "older_says": re.sub(r"\s+", " ", evidence_text(c)).strip()[:220],
                 "newer_source": f"{a0['circular']} item {a0['item']}",
                 "newer_says": "; ".join(a["summary"] for a, _ in active),
                 "applies": f"newer (effective {a0['effective_from']}) as of {as_of}"})
