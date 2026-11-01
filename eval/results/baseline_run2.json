@@ -1,0 +1,35 @@
+{
+  "startup": {
+    "seconds": 98.9,
+    "llm_calls": 1,
+    "tokens": 3913,
+    "amendments": [
+      "SPIT/ACAD/CIR/2026-27/03#1",
+      "SPIT/ACAD/CIR/2026-27/03#3",
+      "SPIT/ACAD/CIR/2026-27/03#4",
+      "SPIT/ACAD/CIR/2026-27/03#5",
+      "SPIT/ACAD/CIR/2026-27/03#6",
+      "SPIT/ACAD/CIR/2026-27/03#7",
+      "SPIT/ACAD/CIR/2026-27/03#8",
+      "SPIT/ACAD/CIR/2026-27/03#9"
+    ]
+  },
+  "questions": 19,
+  "modes": [
+    "evidence_aware"
+  ],
+  "per_mode": {
+    "evidence_aware": {
+      "accuracy": 0.2632,
+      "stale_errors": 2,
+      "abstention_rate": 0.7368,
+      "abstention_recall": 1.0,
+      "over_refusal": 0.7059,
+      "hinglish_hindi_correct": "1/6",
+      "errors": 0,
+      "avg_tokens": 718.7,
+      "avg_latency_ms": 3028.4,
+      "truncated_replies": 0
+    }
+  }
+}
