@@ -4,12 +4,15 @@
     python eval/run_eval.py --split test    # report on the held-out half
     python eval/run_eval.py --sweep         # abstention-threshold sweep on the dev half
     python eval/run_eval.py -v              # show per-question failures
+    python eval/run_eval.py --benchmark eval/regression.jsonl --out eval/results/regression_x.csv --pace 16
+                                            # another question set, its own results file, paced for rate limits
 """
 import argparse
 import csv
 import json
 import re
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -18,6 +21,48 @@ from spitrag.pipeline import MODES, get_pipeline  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
+# Token meter: counts usage on every chat completion, whatever spitrag does internally.
+TOKENS = {"calls": 0, "prompt": 0, "completion": 0, "total": 0, "truncated": 0}
+
+
+def _install_token_meter():
+    from openai.resources.chat.completions import Completions
+    original = Completions.create
+
+    def create(self, *args, **kwargs):
+        r = original(self, *args, **kwargs)
+        TOKENS["calls"] += 1
+        if getattr(r, "usage", None):
+            TOKENS["prompt"] += r.usage.prompt_tokens or 0
+            TOKENS["completion"] += r.usage.completion_tokens or 0
+            TOKENS["total"] += r.usage.total_tokens or 0
+        if r.choices and r.choices[0].finish_reason == "length":
+            TOKENS["truncated"] += 1
+        return r
+    Completions.create = create
+
+
+def _error_result(reason):
+    return {"outcome": "error", "claims": [], "claims_text": "", "retrieved_ids": [], "latency_ms": 0,
+            "abstain_reason": f"error: {reason[:80]}", "language": None}
+
+
+def _ask(pipe, q, mode):
+    """pipe.ask with a wait-and-retry on provider rate limits. Other failures become an 'error' outcome."""
+    from openai import RateLimitError
+    for _ in range(4):
+        try:
+            return pipe.ask(q["question"], as_of=q["as_of"], batch=q.get("batch"), mode=mode)
+        except RateLimitError as e:
+            m = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", str(e))
+            wait = (int(m.group(1) or 0) * 60 + float(m.group(2))) if m else 20
+            print(f"  rate limited, waiting {wait:.0f}s", file=sys.stderr)
+            time.sleep(wait + 1)
+        except (RuntimeError, SystemExit) as e:
+            print(f"  [ERROR {q['id']} {mode}] {e}", file=sys.stderr)
+            return _error_result(str(e))
+    return _error_result("rate limited")
+
 
 def norm(s: str) -> str:
     s = s.lower().replace("**", "").replace("–", "-").replace("—", "-")
@@ -25,8 +70,9 @@ def norm(s: str) -> str:
     return re.sub(r"\s+", " ", s)
 
 
-def load_benchmark(split):
-    qs = [json.loads(l) for l in (HERE / "benchmark.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+def load_benchmark(split, path=None):
+    path = Path(path) if path else HERE / "benchmark.jsonl"
+    qs = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
     for i, q in enumerate(qs):
         q["split"] = "dev" if i % 2 == 0 else "test"
     return [q for q in qs if split == "all" or q["split"] == split]
@@ -54,14 +100,22 @@ def judge(q, res):
     return r
 
 
-def evaluate(pipe, qs, modes, verbose=False):
+def evaluate(pipe, qs, modes, verbose=False, pace=0.0):
     rows = []
+    last = 0.0
     for mode in modes:
         for q in qs:
-            res = pipe.ask(q["question"], as_of=q["as_of"], batch=q.get("batch"), mode=mode)
+            if pace:  # stay under the provider's tokens-per-minute limit
+                time.sleep(max(0.0, last + pace - time.time()))
+                last = time.time()
+            before = dict(TOKENS)
+            res = _ask(pipe, q, mode)
             j = judge(q, res)
             row = {"mode": mode, "id": q["id"], "category": q["category"], **j,
-                   "coverage": res.get("coverage"), "n_verified": res.get("n_verified", 0), "latency_ms": res["latency_ms"]}
+                   "coverage": res.get("coverage"), "n_verified": res.get("n_verified", 0), "latency_ms": res["latency_ms"],
+                   "outcome": res["outcome"], "language": res.get("language"),
+                   "llm_calls": TOKENS["calls"] - before["calls"], "tokens": TOKENS["total"] - before["total"],
+                   "truncated": TOKENS["truncated"] - before["truncated"]}
             # retrieval recall on the raw ranked list (before any filtering)
             gold = q.get("gold", [])
             for k in (5, 10):
@@ -70,11 +124,14 @@ def evaluate(pipe, qs, modes, verbose=False):
             # citation support: verifier-confirmed claims, and cited passage contains gold evidence
             cl = res.get("claims", [])
             row["cit_verified"] = (sum(1 for c in cl if c.get("verified")), len(cl))
-            cited = [pipe.by_id[ci["chunk_id"]] for c in cl for ci in c["citations"]]
+            cited = [pipe.by_id[ci["chunk_id"]] for c in cl for ci in c["citations"] if ci["chunk_id"] in pipe.by_id]
             row["cit_gold"] = (any(gold_hit(c, g) for c in cited for g in gold) if gold and cl else None)
             row["answer"] = res["claims_text"][:160]
             row["reason"] = res.get("abstain_reason")
+            row["english_query"] = res.get("english_query")
             rows.append(row)
+            print(f"  {mode:15} {q['id']} {res['outcome']:8} correct={row['correct']!s:5} tokens={row['tokens']:5} "
+                  f"{res['claims_text'][:90]!r}", file=sys.stderr)
             if verbose and mode == "evidence_aware" and not row["correct"]:
                 print(f"  [FAIL {q['id']} {q['category']}] {q['question']}\n     outcome={res['outcome']} reason={res.get('abstain_reason')} "
                       f"cov={res.get('coverage')}\n     answer={res['claims_text'][:200]!r}")
@@ -134,23 +191,52 @@ def main():
     ap.add_argument("--modes", nargs="+", default=MODES)
     ap.add_argument("--sweep", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--benchmark", default=None, help="question file (default eval/benchmark.jsonl)")
+    ap.add_argument("--out", default=None, help="results CSV (default eval/results/per_question.csv)")
+    ap.add_argument("--pace", type=float, default=0.0, help="minimum seconds between questions (e.g. 16 for Groq free tier)")
     a = ap.parse_args()
+    _install_token_meter()
+    t0 = time.time()
     pipe = get_pipeline()
-    qs = load_benchmark(a.split)
+    startup = {"seconds": round(time.time() - t0, 1), "llm_calls": TOKENS["calls"], "tokens": TOKENS["total"],
+               "amendments": sorted(x["id"] for x in pipe.amendments)}
+    print(f"startup {startup['seconds']}s, {startup['llm_calls']} LLM calls, {startup['tokens']} tokens, "
+          f"amendments kept: {startup['amendments']}")
+    qs = load_benchmark(a.split, a.benchmark)
     print(f"{len(qs)} questions | split={a.split} | dense backend: {pipe.retriever.dense.backend} | "
           f"generator: {type(pipe.generator).__name__} | rerank: {'cross-encoder' if pipe.retriever.rerank_available() else 'unavailable (no-op)'}")
-    rows = evaluate(pipe, qs, a.modes, a.verbose)
+    rows = evaluate(pipe, qs, a.modes, a.verbose, a.pace)
     summarize(rows, a.modes)
     if a.sweep:
         sweep(rows)
-    out = HERE / "results"
-    out.mkdir(exist_ok=True)
+    out_csv = Path(a.out) if a.out else HERE / "results" / "per_question.csv"
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
     flat = [{k: (json.dumps(v) if isinstance(v, tuple) else v) for k, v in r.items()} for r in rows]
-    with open(out / "per_question.csv", "w", newline="", encoding="utf-8") as f:
+    with open(out_csv, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(flat[0]))
         w.writeheader()
         w.writerows(flat)
-    print(f"\nper-question results -> {out/'per_question.csv'}")
+    print(f"\nper-question results -> {out_csv}")
+    if a.out:  # run summary next to a custom results file
+        summary = {"startup": startup, "questions": len(qs), "modes": a.modes, "per_mode": {}}
+        for m in a.modes:
+            R = [r for r in rows if r["mode"] == m]
+            ans = [r for r in R if not r["should_abstain"]]
+            multi = [r for r in R if r["category"] in ("hinglish", "hindi")]
+            summary["per_mode"][m] = {
+                "accuracy": round(sum(r["correct"] for r in R) / len(R), 4),
+                "stale_errors": sum(1 for r in R if r.get("stale_error")),
+                "abstention_rate": round(sum(r["abstained"] for r in R) / len(R), 4),
+                "abstention_recall": round(sum(r["abstained"] for r in R if r["should_abstain"]) / max(1, len(R) - len(ans)), 4),
+                "over_refusal": round(sum(r["abstained"] for r in ans) / max(1, len(ans)), 4),
+                "hinglish_hindi_correct": f"{sum(r['correct'] for r in multi)}/{len(multi)}",
+                "errors": sum(1 for r in R if r["outcome"] == "error"),
+                "avg_tokens": round(sum(r["tokens"] for r in R) / len(R), 1),
+                "avg_latency_ms": round(sum(r["latency_ms"] for r in R) / len(R), 1),
+                "truncated_replies": sum(r["truncated"] for r in R),
+            }
+        out_csv.with_suffix(".json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
