@@ -15,7 +15,7 @@ RERANK_MODEL = os.getenv("SPIT_RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6
 # Groq through its OpenAI-compatible API. Key comes from .env or the environment; never hard-coded.
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-LLM_MODEL = os.getenv("SPIT_LLM_MODEL", "llama-3.3-70b-versatile")  # confirm the model id in your Groq console
+LLM_MODEL = os.getenv("SPIT_LLM_MODEL", "openai/gpt-oss-120b")  # confirm the model id in your Groq console
 
 # A page with fewer text-layer words than this is treated as scanned, and its whole PDF is skipped (no OCR).
 TEXT_LAYER_MIN_WORDS = 20
