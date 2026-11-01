@@ -1,7 +1,12 @@
 # SPIT college bot: text-layer PDF pipeline
 
 Answers questions from the college PDFs in `data/pdfs/`. Every document, its metadata, its clauses, and any
-circular amendments are read from those PDFs at startup. Nothing is pre-built or hand-written.
+circular amendments are read from those PDFs at startup. Nothing is hand-written.
+
+Two expensive startup results are cached in `data/.cache/` (git-ignored): chunk embeddings (`.npy`) and the verified
+circular amendments (`.json`, the only startup step that calls the LLM). Each entry is keyed by a hash of the PDF
+files, the model names and the relevant prompts/settings, so changing any PDF rebuilds it automatically. Set
+`SPIT_NO_CACHE=1` to force a rebuild.
 
 ## Setup
     pip install -r requirements.txt
@@ -14,8 +19,8 @@ Settings come from `.env` (or real environment variables, which take priority). 
     python ask.py "What is the minimum attendance required in each course?" [--as-of 2026-11-01] [--batch 2025] [--json]
     python ask.py --interactive       # initialize once, then ask multiple questions
 
-The first question in a process initializes the PDF index, embeddings, reranker, and amendment extraction.
-Use interactive mode or reuse `spitrag.pipeline.get_pipeline()` from an application to avoid rebuilding them.
+The first question in a process loads the PDFs and models (and, on a cache miss, embeds the chunks and extracts
+amendments). Use interactive mode or reuse `spitrag.pipeline.get_pipeline()` from an application to do this once.
 
 ## Web app (SPIT Campus Assistant)
 A FastAPI backend (`api/`) wraps the pipeline, and a Vite + React frontend (`web/`) provides the Ask, Documents and

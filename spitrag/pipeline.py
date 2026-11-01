@@ -15,8 +15,9 @@ import time
 from threading import Lock
 from datetime import date
 
+from . import amendments as amendments_mod, cache
 from .amendments import attach_amendments, extract_amendments
-from .config import ABSTAIN_MIN_COVERAGE, MIN_QUERY_TERMS, TOP_K_CONTEXT
+from .config import ABSTAIN_MIN_COVERAGE, LLM_MODEL, MIN_QUERY_TERMS, TOP_K_CONTEXT
 from .docmeta import build_documents
 from .generate import get_generator, unit_scores, units_of
 from .ingest import build_chunks
@@ -44,13 +45,28 @@ class Pipeline:
         self.docs = build_documents(self.pdfs)
         self.chunks = build_chunks(self.pdfs, self.docs)
         self.by_id = {c["id"]: c for c in self.chunks}
-        self.amendments = extract_amendments(self.docs, self.pdfs)
+        self.amendments = self._load_amendments()
         attach_amendments(self.chunks, self.amendments)
         self.amend_by_id = amendment_index(self.amendments)
         print(f"[pipeline] {len(self.docs)} documents, {len(self.chunks)} chunks, {len(self.amendments)} amendments",
               file=sys.stderr)
         self.retriever = Retriever(self.chunks)
         self.generator = get_generator()
+
+    def _load_amendments(self):
+        """Verified amendments from the cache, or extracted with the LLM (and cached) when any input changed."""
+        key = cache.digest("amendments", cache.pdf_fingerprint(), LLM_MODEL, amendments_mod.PROMPT,
+                           amendments_mod.RETRY, amendments_mod.FUZZY_MIN, sorted(self.docs.items()),
+                           [(c["id"], c["clauses"]) for c in self.chunks])
+        cached = cache.load_json("amendments", key)
+        if cached is not None:
+            return cached
+        found = extract_amendments(self.docs, self.pdfs)
+        if found or not any(d["doc_type"] == "circular" for d in self.docs.values()):
+            cache.save_json("amendments", key, found)
+        else:  # nothing kept although circulars exist: likely a bad LLM run, so don't pin it in the cache
+            print("[pipeline] no amendments kept; not caching this result", file=sys.stderr)
+        return found
 
     def _english_query(self, question: str):
         """LLM rewrite of a Hinglish/Hindi question into an English search query; None falls back to the gloss."""

@@ -4,6 +4,7 @@ import math
 import numpy as np
 from rank_bm25 import BM25Okapi
 
+from . import cache
 from .config import EMBED_MODEL, RERANK_MODEL, RRF_K, TOP_K_RETRIEVE
 from .text import tokenize, tokens_stem
 
@@ -17,8 +18,12 @@ class Retriever:
         raw = {t for c in chunks for t in tokenize(c["index_text"])}
         self.vocab, self.vocab_list = raw, sorted(raw)
         self.embedder = SentenceTransformer(EMBED_MODEL)
-        self.emb = self.embedder.encode([c["index_text"] for c in chunks], normalize_embeddings=True,
-                                        batch_size=32, show_progress_bar=False)
+        texts = [c["index_text"] for c in chunks]
+        key = cache.digest("embeddings", EMBED_MODEL, texts)  # the texts already reflect every PDF's content
+        self.emb = cache.load_array("embeddings", key, len(texts))
+        if self.emb is None:
+            self.emb = self.embedder.encode(texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False)
+            cache.save_array("embeddings", key, self.emb)
         self.reranker = CrossEncoder(RERANK_MODEL)
         self.dense = type("D", (), {"backend": f"sentence-transformers:{EMBED_MODEL}"})()
         self.chunk_stems = [set(s) for s in stems]

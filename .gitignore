@@ -5,3 +5,5 @@ __pycache__/
 node_modules/
 web/dist/
 *.tsbuildinfo
+data/.cache/
+.claude/launch.json
